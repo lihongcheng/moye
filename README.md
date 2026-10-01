@@ -40,7 +40,7 @@ PDF、图片和 HTML 提供经典、书页、极简三种样式。Word 排版与
 需要 macOS、Node.js 22.12+ 和 npm。首次安装需要网络。
 
 ```bash
-cd /Users/bytedance/Documents/tools/moye
+cd /path/to/moye
 npm ci
 node node_modules/electron/install.js
 npm run setup:pandoc
