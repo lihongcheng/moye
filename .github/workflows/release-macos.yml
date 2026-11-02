@@ -1,0 +1,100 @@
+name: Build and release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            app_dir: mac-arm64
+          - arch: x64
+            runner: macos-15-intel
+            app_dir: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify architecture and release version
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          node --input-type=commonjs <<'NODE'
+          const assert = require('node:assert/strict')
+          assert.equal(process.arch, process.env.EXPECTED_ARCH)
+          if (process.env.GITHUB_REF_TYPE === 'tag') {
+            assert.equal(process.env.GITHUB_REF_NAME, `v${require('./package.json').version}`)
+          }
+          NODE
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - run: npm test
+      - name: Build DMG and ZIP with ad-hoc signing
+        # No Developer ID certificate is required. See the release installation notes.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:mac -- --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
+      - name: Test the packaged application
+        env:
+          MOYE_TEST_EXECUTABLE: ${{ github.workspace }}/release/${{ matrix.app_dir }}/墨页.app/Contents/MacOS/墨页
+        run: node scripts/smoke-test.mjs
+      - name: Verify signature and disk image
+        env:
+          APP_DIR: ${{ matrix.app_dir }}
+        run: |
+          codesign --verify --deep --strict --verbose=2 "release/$APP_DIR/墨页.app"
+          for image in release/*.dmg; do hdiutil verify "$image"; done
+      - name: Upload installation packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: moye-macos-${{ matrix.arch }}
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: moye-macos-*
+          path: release
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum *.dmg *.zip > SHA256SUMS.txt
+      - name: Publish verified packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.zip release/SHA256SUMS.txt \
+            --verify-tag --title "墨页 Moye $GITHUB_REF_NAME" --notes-file .github/RELEASE_NOTES.md

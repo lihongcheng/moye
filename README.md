@@ -4,15 +4,18 @@
 
 当前版本：**0.1.0**。技术栈为 Electron + React + TypeScript + CodeMirror 6，Word 转换使用随应用打包的 Pandoc。
 
-## 直接运行
+## 下载安装
 
-已打包的 Apple Silicon 应用位于 `release/mac-arm64/墨页.app`，双击打开即可，不需要安装 Node.js 或 Pandoc。DMG/ZIP 安装包生成在 `release/`。
+前往 **[GitHub Releases 下载最新版本](https://github.com/lihongcheng/moye/releases/latest)**，在 Assets 中选择对应芯片的安装包：
 
-```bash
-open release/mac-arm64/墨页.app
-```
+| Mac 芯片 | DMG 安装包 |
+| --- | --- |
+| Apple Silicon（M 系列） | [Moye-0.1.0-arm64.dmg](https://github.com/lihongcheng/moye/releases/download/v0.1.0/Moye-0.1.0-arm64.dmg) |
+| Intel | [Moye-0.1.0-x64.dmg](https://github.com/lihongcheng/moye/releases/download/v0.1.0/Moye-0.1.0-x64.dmg) |
 
-运行要求：**macOS 13 或更高版本**。当前在 Apple Silicon 上验证；Intel 构建配置已提供，尚未进行 Intel 实机验证。本地构建未使用 Apple Developer ID 签名和公证，跨机器分发前需要配置签名与公证。
+打开 DMG，将「墨页.app」拖入 Applications（应用程序），然后从应用程序文件夹启动。安装包已内置 Electron 和 Pandoc，**不需要安装 Node.js 或 Pandoc**。Release 同时提供 ZIP 和 SHA-256 校验文件。
+
+运行要求：**macOS 13 或更高版本**。当前公开安装包使用 ad-hoc 签名，尚未使用 Apple Developer ID 签名和公证。若 macOS 阻止首次启动，请确认来源为本仓库，尝试打开后前往「系统设置 → 隐私与安全性 → 仍要打开」，按系统提示确认。
 
 ## 已实现
 
@@ -71,6 +74,27 @@ npx electron-builder --mac dmg zip --x64
 ```
 
 重新生成应用图标：`xcrun swift scripts/make-icon.swift resources`，需要 Xcode Command Line Tools。
+
+## 发布安装包
+
+[macOS 发布工作流](.github/workflows/release-macos.yml) 会分别在 Apple Silicon 和 Intel runner 上构建、测试 DMG / ZIP，并在全部验证通过后上传到 GitHub Releases。公开构建使用 ad-hoc 签名，不需要额外配置 Apple 或 GitHub 密钥。
+
+维护者先将 `package.json` 和 `package-lock.json` 更新到待发布版本并提交，再推送同版本标签：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+标签必须与 `package.json` 版本一致。也可以在 Actions 中手动运行工作流：选择分支时只构建并保存安装包，不创建 Release；选择版本标签时会发布该版本。已有 Release 不会被自动覆盖。
+
+本地生成相同签名方式的安装包：
+
+```bash
+npm run dist:mac -- --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
+```
+
+本地 `.app` 和 DMG / ZIP 位于 `release/`。正式 Developer ID 签名与公证需要维护者另行提供 Apple 开发者证书和公证凭据。
 
 ## 常用快捷键
 
